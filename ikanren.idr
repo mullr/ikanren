@@ -8,6 +8,13 @@ Eq Term where
   (==) (Data x) (Data y) = x == y
   (==) _ _ = False
 
+implicit lvarTerm : LVar -> Term
+lvarTerm lv = LVarTerm lv
+
+implicit dataTerm : String -> Term
+dataTerm s = Data s
+
+
 SMap : Type
 SMap = List (LVar, Term)
 
@@ -78,9 +85,44 @@ Monad LazyStream where
   (>>=) (MatureStream head next) func = (func head) <+> (next >>= func)
   (>>=) (ImmatureStream x) func = ImmatureStream (x >>= func)
 
+realizeStreamHead : LazyStream a -> LazyStream a
+realizeStreamHead (ImmatureStream x) = realizeStreamHead x
+realizeStreamHead s = s
 
-  -- ||| Also called `bind`.
-  -- (>>=)  : m a -> ((result : a) -> m b) -> m b
+-- Interpreter State
+record State where
+  constructor MkState
+  smap : SMap
+  nextId : Int
 
-  -- ||| Also called `flatten` or mu
-  -- join : m (m a) -> m a
+emptyState : State
+emptyState = MkState [] 0
+
+-- Goal functions
+Goal : Type
+Goal = State -> LazyStream State
+
+infixr 10 ===
+(===) : Term -> Term -> Goal
+(===) u v state =
+  case unify (smap state) u v  of
+    Just smap' => pure ( record { smap = smap' } state )
+    Nothing => neutral
+
+callFresh : (LVar -> Goal) -> Goal
+callFresh f state =
+  let goal = f (MkLVar (nextId state))
+      state' = record { nextId $= (+ 1) } state in
+    goal state'
+
+disj : Goal -> Goal -> Goal
+disj g1 g2 state = (g1 state) <+> (g2 state)
+
+conj : Goal -> Goal -> Goal
+conj g1 g2 state = (g1 state) >>= g2
+
+-- foobar : Goal
+-- foobar = callFresh
+--   (\a => disj (a === "foo")
+--               (a === "bar"))
+
