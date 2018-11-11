@@ -122,8 +122,11 @@ callFresh f state =
       state' = record { nextId $= (+ 1) } state in
     goal state'
 
+delay : Goal -> Goal
+delay g state = ImmatureStream (g state)
+
 disj : Goal -> Goal -> Goal
-disj g1 g2 state = (g1 state) <+> (g2 state)
+disj g1 g2 state = ((delay g1) state) <+> ((delay g2) state)
 
 conj : Goal -> Goal -> Goal
 conj g1 g2 state = (g1 state) >>= g2
