@@ -93,8 +93,28 @@ Monad LazyStream where
   (ImmatureStream x)       >>= func = ImmatureStream (x >>= func)
 
 realizeStreamHead : LazyStream a -> LazyStream a
-realizeStreamHead (ImmatureStream x) = realizeStreamHead x
+realizeStreamHead (ImmatureStream s) = realizeStreamHead s
 realizeStreamHead s = s
+
+take : Nat -> LazyStream a -> List a
+take Z _ = []
+take (S n) s = case realizeStreamHead s of
+                  MatureStream x xs => x :: take n xs
+                  _ => []
+
+realizeAll : LazyStream a -> List a
+realizeAll EmptyStream = []
+realizeAll (MatureStream x xs) = x :: realizeAll xs
+realizeAll (ImmatureStream s) = realizeAll s
+
+-- fours : LazyStream Nat
+-- fours = MatureStream 4 (ImmatureStream fours)
+
+-- fives : LazyStream Nat
+-- fives = MatureStream 5 (ImmatureStream fives)
+
+-- take 4 (fours <+> fives) = [4, 5, 4, 5]
+
 
 -- Interpreter State
 record State where
