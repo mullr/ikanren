@@ -1,18 +1,19 @@
 data LVar = MkLVar Int
-Eq LVar where
-  (==) (MkLVar x) (MkLVar y) = x == y
 
-data Term = LVarTerm LVar | Data String
-Eq Term where
-  (==) (LVarTerm x) (LVarTerm y) = x == y
-  (==) (Data x) (Data y) = x == y
-  (==) _ _ = False
+Eq LVar where
+  (MkLVar x) == (MkLVar y) = x == y
+
 
 implicit lvarTerm : LVar -> Term
 lvarTerm lv = LVarTerm lv
+data Term = LVarTerm LVar | Data String
 
 implicit dataTerm : String -> Term
 dataTerm s = Data s
+Eq Term where
+  (LVarTerm x) == (LVarTerm y) = x == y
+  (Data x)     == (Data y)     = x == y
+  _            == _            = False
 
 
 SMap : Type
@@ -60,30 +61,31 @@ unify s t u =
 data LazyStream a = EmptyStream | MatureStream a (LazyStream a) | ImmatureStream (Inf (LazyStream a))
 
 Semigroup (LazyStream a) where
-  (<+>) EmptyStream y = y
-  (<+>) (MatureStream head next) y = MatureStream head (next <+> y)
-  (<+>) (ImmatureStream x) y = ImmatureStream (y <+> x)
+  EmptyStream              <+> y = y
+  (MatureStream head next) <+> y = MatureStream head (next <+> y)
+  (ImmatureStream x)       <+> y = ImmatureStream (y <+> x)
 
 Monoid (LazyStream a) where
   neutral = EmptyStream
 
 Functor LazyStream where
-  map func EmptyStream = EmptyStream
+  map func EmptyStream              = EmptyStream
   map func (MatureStream head next) = MatureStream (func head) (map func next)
-  map func (ImmatureStream x) = ImmatureStream (map func x)
+  map func (ImmatureStream x)       = ImmatureStream (map func x)
 
 Applicative LazyStream where
   pure a = MatureStream a EmptyStream
-  (<*>) _ EmptyStream = EmptyStream
-  (<*>) EmptyStream y = EmptyStream
-  (<*>) (MatureStream func funcs) (MatureStream y ys)  = MatureStream (func y) (funcs <*> ys)
-  (<*>) (ImmatureStream funcs) ys = ImmatureStream ( funcs <*> ys )
-  (<*>) funcs (ImmatureStream ys) = ImmatureStream ( funcs <*> ys )
+
+  _                         <*> EmptyStream          = EmptyStream
+  EmptyStream               <*> y                    = EmptyStream
+  (MatureStream func funcs) <*>  (MatureStream y ys) = MatureStream (func y) (funcs <*> ys)
+  (ImmatureStream funcs)    <*> ys                   = ImmatureStream (funcs <*> ys)
+  funcs                     <*> (ImmatureStream ys)  = ImmatureStream (funcs <*> ys)
 
 Monad LazyStream where
-  (>>=) EmptyStream _ = EmptyStream
-  (>>=) (MatureStream head next) func = (func head) <+> (next >>= func)
-  (>>=) (ImmatureStream x) func = ImmatureStream (x >>= func)
+  EmptyStream              >>= _    = EmptyStream
+  (MatureStream head next) >>= func = (func head) <+> (next >>= func)
+  (ImmatureStream x)       >>= func = ImmatureStream (x >>= func)
 
 realizeStreamHead : LazyStream a -> LazyStream a
 realizeStreamHead (ImmatureStream x) = realizeStreamHead x
