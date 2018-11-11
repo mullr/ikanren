@@ -6,41 +6,41 @@ Eq LVar where
 Show LVar where
   show (MkLVar x) = "LVar_" ++ show x
 
-data Term = LVarTerm LVar | Data String
+data Term a = LVarTerm LVar | Data a
 
-Eq Term where
+Eq a => Eq (Term a) where
   (LVarTerm x) == (LVarTerm y) = x == y
   (Data x)     == (Data y)     = x == y
   _            == _            = False
 
-Show Term where
+Show a => Show (Term a) where
   show (LVarTerm lv) = show lv
   show (Data x) = show x
 
-SMap : Type
-SMap = List (LVar, Term)
+SMap : Type -> Type
+SMap a = List (LVar, Term a)
 
-total lookup : SMap -> LVar -> Maybe Term
+total lookup : SMap a -> LVar -> Maybe (Term a)
 lookup [] var = Nothing
 lookup ((entry_k, entry_v) :: smap) var =
   if entry_k == var
     then Just entry_v
     else lookup smap var
 
-total addSubstitution: SMap -> LVar -> Term -> SMap
+total addSubstitution: SMap a -> LVar -> Term a -> SMap a
 addSubstitution s v t = (v, t) :: s
 
 -- LookupTheorem1 : (v: LVar) -> (t: Term) -> (s: SMap) -> lookup (addSubstitution s v t) v = Just t
 -- LookupTheorem1 v t s = ?P1_rhs1
 
 
-walk : SMap -> Term -> Term
+walk : SMap a -> Term a -> Term a
 walk s (LVarTerm v) = case (lookup s v) of
                         Just t => walk s t
                         Nothing => LVarTerm v
 walk s x = x
 
-unify : SMap -> Term -> Term -> Maybe SMap
+unify : Eq a => SMap a -> Term a -> Term a -> Maybe (SMap a)
 unify s t u =
   let t = walk s t
       u = walk s u in
@@ -109,97 +109,101 @@ realizeAll (ImmatureStream s) = realizeAll s
 -- fives : LazyStream Nat
 -- fives = MatureStream 5 (ImmatureStream fives)
 
+-- diverge : LazyStream Nat
+-- diverge = ImmatureStream diverge
+
 -- take 4 (fours <+> fives) = [4, 5, 4, 5]
+-- take 4 (fours <+> diverge) = take 4 (diverge <+> fours) = [4, 4, 4, 4]
 
 
 -- Interpreter State
-record State where
+record State a where
   constructor MkState
-  smap : SMap
+  smap : SMap a
   nextId : Int
 
-emptyState : State
+emptyState : State a
 emptyState = MkState [] 0
 
 -- Goal functions
-Goal : Type
-Goal = State -> LazyStream State
+Goal : Type -> Type
+Goal a = State a -> LazyStream (State a)
 
-succeed : Goal
+succeed : Goal a
 succeed = pure
 
-fail : Goal
+fail : Goal a
 fail _ = neutral
 
 infixr 10 ===
-(===) : Term -> Term -> Goal
+(===) : Eq a => Term a -> Term a -> Goal a
 (===) u v state =
   case unify (smap state) u v  of
     Just smap' => pure ( record { smap = smap' } state )
     Nothing => neutral
 
-callFresh : (LVar -> Goal) -> Goal
+callFresh : (LVar -> Goal a) -> Goal a
 callFresh f state =
   let goal = f (MkLVar (nextId state))
       state' = record { nextId $= (+ 1) } state in
     goal state'
 
-delay : Goal -> Goal
+delay : Goal a -> Goal a
 delay g state = ImmatureStream (g state)
 
-disj : Goal -> Goal -> Goal
+disj : Goal a -> Goal a -> Goal a
 disj g1 g2 state = ((delay g1) state) <+> ((delay g2) state)
 
-conj : Goal -> Goal -> Goal
+conj : Goal a -> Goal a -> Goal a
 conj g1 g2 state = (g1 state) >>= g2
 
 
 -- Sugar
 
-implicit lvarTerm : LVar -> Term
+implicit lvarTerm : LVar -> Term a
 lvarTerm lv = LVarTerm lv
 
-implicit dataTerm : String -> Term
+implicit dataTerm : Eq a => a -> Term a
 dataTerm s = Data s
 
 term syntax fresh {x} "in" [body] = callFresh (\x => body)
 
-conjList : List Goal -> Goal
+conjList : List (Goal a) -> Goal a
 conjList = foldr conj succeed
 
-conde : List ( List Goal ) -> Goal
+conde : List (List (Goal a)) -> Goal a
 conde conjClauses = foldr disj fail
                       (map (foldr conj succeed)
                            conjClauses)
 
 
-run : Nat -> Goal -> List SMap
+run : Nat -> Goal a -> List (SMap a)
 run n g = map smap (take n (g emptyState))
 
-runComplete : Goal -> List SMap
+runComplete : Goal a -> List (SMap a)
 runComplete g = map smap (realizeAll (g emptyState))
 
 
--- foobar : Goal
+-- foobar : Goal String
 -- foobar =
 --   fresh a in
 --     disj (a === "foo")
 --          (a === "bar")
 
--- foos : Term -> Goal
+-- foos : Term -> Goal String
 -- foos a =
 --   disj (a === "foo")
 --        (foos a)
 
--- bars : Term -> Goal
+-- bars : Term -> Goal String
 -- bars a =
 --   disj (a === "bar")
 --        (bars a)
 
--- foobars : Term -> Goal
+-- foobars : Term -> Goal String
 -- foobars a = disj (foos a) (bars a)
 
--- condeTest : Goal
+-- condeTest : Goal String
 -- condeTest =
 --   fresh a in
 --   fresh b in
