@@ -3,6 +3,8 @@ data LVar = MkLVar Int
 Eq LVar where
   (MkLVar x) == (MkLVar y) = x == y
 
+Show LVar where
+  show (MkLVar x) = "LVar_" ++ show x
 
 implicit lvarTerm : LVar -> Term
 lvarTerm lv = LVarTerm lv
@@ -15,6 +17,9 @@ Eq Term where
   (Data x)     == (Data y)     = x == y
   _            == _            = False
 
+Show Term where
+  show (LVarTerm lv) = show lv
+  show (Data x) = show x
 
 SMap : Type
 SMap = List (LVar, Term)
