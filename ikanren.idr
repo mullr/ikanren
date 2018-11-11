@@ -6,12 +6,8 @@ Eq LVar where
 Show LVar where
   show (MkLVar x) = "LVar_" ++ show x
 
-implicit lvarTerm : LVar -> Term
-lvarTerm lv = LVarTerm lv
 data Term = LVarTerm LVar | Data String
 
-implicit dataTerm : String -> Term
-dataTerm s = Data s
 Eq Term where
   (LVarTerm x) == (LVarTerm y) = x == y
   (Data x)     == (Data y)     = x == y
@@ -129,6 +125,12 @@ emptyState = MkState [] 0
 Goal : Type
 Goal = State -> LazyStream State
 
+succeed : Goal
+succeed = pure
+
+fail : Goal
+fail _ = neutral
+
 infixr 10 ===
 (===) : Term -> Term -> Goal
 (===) u v state =
@@ -151,8 +153,58 @@ disj g1 g2 state = ((delay g1) state) <+> ((delay g2) state)
 conj : Goal -> Goal -> Goal
 conj g1 g2 state = (g1 state) >>= g2
 
--- foobar : Goal
--- foobar = callFresh
---   (\a => disj (a === "foo")
---               (a === "bar"))
 
+-- Sugar
+
+implicit lvarTerm : LVar -> Term
+lvarTerm lv = LVarTerm lv
+
+implicit dataTerm : String -> Term
+dataTerm s = Data s
+
+term syntax fresh {x} "in" [body] = callFresh (\x => body)
+
+conjList : List Goal -> Goal
+conjList = foldr conj succeed
+
+conde : List ( List Goal ) -> Goal
+conde conjClauses = foldr disj fail
+                      (map (foldr conj succeed)
+                           conjClauses)
+
+
+run : Nat -> Goal -> List SMap
+run n g = map smap (take n (g emptyState))
+
+runComplete : Goal -> List SMap
+runComplete g = map smap (realizeAll (g emptyState))
+
+
+-- foobar : Goal
+-- foobar =
+--   fresh a in
+--     disj (a === "foo")
+--          (a === "bar")
+
+-- foos : Term -> Goal
+-- foos a =
+--   disj (a === "foo")
+--        (foos a)
+
+-- bars : Term -> Goal
+-- bars a =
+--   disj (a === "bar")
+--        (bars a)
+
+-- foobars : Term -> Goal
+-- foobars a = disj (foos a) (bars a)
+
+-- condeTest : Goal
+-- condeTest =
+--   fresh a in
+--   fresh b in
+--     conde [[a === "One",   b === "Two"],
+--            [a === "Alpha", b === "Beta"]]
+
+-- main: IO ()
+-- main = putStrLn(show (runComplete condeTest))
