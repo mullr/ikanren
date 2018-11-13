@@ -6,16 +6,20 @@ Eq LVar where
 Show LVar where
   show (MkLVar x) = "LVar_" ++ show x
 
-data Term a = LVarTerm LVar | Data a
+data Term a = LVarTerm LVar | Data a | (::) (Term a) (Term a) | Nil
 
 Eq a => Eq (Term a) where
   (LVarTerm x) == (LVarTerm y) = x == y
   (Data x)     == (Data y)     = x == y
+  (x :: xs)    == (y :: ys)    = (x == y) && (xs == ys)
+  Nil          == Nil          = True
   _            == _            = False
 
 Show a => Show (Term a) where
   show (LVarTerm lv) = show lv
   show (Data x) = show x
+  show (x :: xs) = (show x) ++ "::" ++ (show xs)
+  show Nil = "Nil"
 
 SMap : Type -> Type
 SMap a = List (LVar, Term a)
@@ -40,21 +44,24 @@ walk s (LVarTerm v) = case (lookup s v) of
                         Nothing => LVarTerm v
 walk s x = x
 
-unify : Eq a => SMap a -> Term a -> Term a -> Maybe (SMap a)
-unify s t u =
-  let t = walk s t
-      u = walk s u in
+unify : Eq a => Term a -> Term a -> SMap a -> Maybe (SMap a)
+unify t u smap =
+  let t = walk smap t
+      u = walk smap u in
 
     -- Terms that walk to equal values always unify, but add nothing
     -- to the substitution map
     if t == u
-      then Just s
+      then Just smap
       else case (t, u) of
-        (LVarTerm lv, _) => Just (addSubstitution s lv u)
-        (_, LVarTerm lv) => Just (addSubstitution s lv t)
+        (LVarTerm lv, _) => Just (addSubstitution smap lv u)
+        (_, LVarTerm lv) => Just (addSubstitution smap lv t)
+        ((x :: xs), (y :: ys)) => (unify x y smap) >>= (unify xs ys)
+        (Nil, Nil) => Just smap
         (Data x, Data y) => if x == y
-                             then Just s
+                             then Just smap
                              else Nothing
+        (_, _)  => Nothing
 
 -- UnifyTransitive : (s : SMap) -> (t: Term) -> (u : Term) -> unify s t u = unify s u t
 
@@ -138,7 +145,7 @@ fail _ = neutral
 infixr 10 ===
 (===) : Eq a => Term a -> Term a -> Goal a
 (===) u v state =
-  case unify (smap state) u v  of
+  case unify u v (smap state) of
     Just smap' => pure ( record { smap = smap' } state )
     Nothing => neutral
 
@@ -176,12 +183,42 @@ conde conjClauses = foldr disj fail
                       (map (foldr conj succeed)
                            conjClauses)
 
+(&&) : Goal a -> Goal a -> Goal a
+g1 && g2 = conj g1 g2
+
+(||) : Goal a -> Goal a -> Goal a
+g1 || g2 = disj g1 g2
+
 
 run : Nat -> Goal a -> List (SMap a)
 run n g = map smap (take n (g emptyState))
 
 runComplete : Goal a -> List (SMap a)
 runComplete g = map smap (realizeAll (g emptyState))
+
+-- List relations
+conso : Eq a => Term a -> Term a -> Term a -> Goal a
+conso a d l = (a :: d) === l
+
+firsto : Eq a => Term a -> Term a -> Goal a
+firsto a l = fresh d in (a :: d) === l
+
+resto : Eq a => Term a -> Term a -> Goal a
+resto d l = fresh a in (a :: d) === l
+
+nilo : Eq a => Term a -> Goal a
+nilo l = l === Nil
+
+appendo : Eq a => Term a -> Term a -> Term a -> Goal a
+appendo front back l =
+  fresh a in
+  fresh d in
+  fresh rec in
+    disj
+      (nilo front && back === l)
+      ((a :: d) === front &&
+       appendo d back rec &&
+       (a :: rec) === l)
 
 
 -- foobar : Goal String
